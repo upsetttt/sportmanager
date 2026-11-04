@@ -1,0 +1,36 @@
+@startuml
+actor "Khách hàng" as Player
+participant "React UI" as UI
+participant "BookingController" as Controller
+participant "BookingService" as Service
+participant "JdbcVenueDao (DAO)" as Venues
+participant "JdbcBookingDao (DAO)" as Bookings
+database "MySQL" as DB
+
+Player -> UI: Chọn sân/ngày/giờ/thời lượng
+UI -> Venues: GET /venues/{id}/availability?date=...
+Venues -> DB: Đọc lịch đã xác nhận
+DB --> Venues: Các khung giờ bận
+Venues --> UI: Giờ đã được đặt
+Player -> UI: Xác nhận đặt
+UI -> Controller: POST /api/bookings + JWT
+Controller -> Service: createBooking(request, email)
+Service -> Venues: Tìm và khóa sân
+Venues -> DB: SELECT ... FOR UPDATE
+DB --> Venues: Sân và trạng thái
+Service -> Bookings: Kiểm tra khung giờ chồng lấn
+Bookings -> DB: SELECT lịch cùng sân/ngày
+DB --> Bookings: Kết quả kiểm tra
+alt Sân hoạt động và giờ còn trống
+  Service -> Bookings: Lưu lịch đã xác nhận
+  Bookings -> DB: INSERT booking
+  DB --> Bookings: Bản ghi mới
+  Service --> Controller: Mã đặt sân và tổng tiền
+  Controller --> UI: 200 OK
+  UI --> Player: Hiển thị xác nhận
+else Không hợp lệ hoặc đã có lịch trùng
+  Service --> Controller: Lỗi 4xx
+  Controller --> UI: Thông báo lỗi
+  UI --> Player: Yêu cầu chọn lại
+end
+@enduml

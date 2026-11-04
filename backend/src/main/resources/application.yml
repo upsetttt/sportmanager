@@ -1,0 +1,24 @@
+spring:
+  config:
+    import: optional:file:.env[.properties],optional:file:../.env[.properties]
+  datasource:
+    url: ${MYSQL_URL:jdbc:mysql://localhost:3306/sannhaminh?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Ho_Chi_Minh}
+    username: ${MYSQL_USER:root}
+    password: ${MYSQL_PASSWORD:}
+  sql:
+    init:
+      mode: always
+  jackson:
+    time-zone: Asia/Ho_Chi_Minh
+server:
+  port: ${PORT:8080}
+  error:
+    include-message: always
+app:
+  jwt:
+    secret: ${JWT_SECRET:}
+  bootstrap-owner:
+    email: ${OWNER_EMAIL:}
+    password: ${OWNER_PASSWORD:}
+    name: ${OWNER_NAME:Quản lý Sân Nhà Mình}
+    phone: ${OWNER_PHONE:0900000000}

@@ -1,0 +1,50 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Backend: Build",
+            "type": "shell",
+            "command": "${workspaceFolder}\\backend\\mvnw.cmd",
+            "args": [
+                "-f",
+                "${workspaceFolder}\\backend\\pom.xml",
+                "-DskipTests",
+                "package"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": [],
+            "group": "build"
+        },
+        {
+            "label": "Backend: Tests",
+            "type": "shell",
+            "command": "${workspaceFolder}\\backend\\mvnw.cmd",
+            "args": [
+                "-f",
+                "${workspaceFolder}\\backend\\pom.xml",
+                "clean",
+                "verify"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Backend: Spring Boot Run",
+            "type": "shell",
+            "command": "${workspaceFolder}\\backend\\mvnw.cmd",
+            "args": [
+                "-f",
+                "${workspaceFolder}\\backend\\pom.xml",
+                "spring-boot:run"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": []
+        }
+    ]
+}

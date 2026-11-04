@@ -1,0 +1,14 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "java",
+            "name": "Sân Nhà Mình: Spring Boot",
+            "request": "launch",
+            "mainClass": "vn.sannhaminh.booking.BookingApiApplication",
+            "projectName": "booking-api",
+            "cwd": "${workspaceFolder}",
+            "preLaunchTask": "Backend: Build"
+        }
+    ]
+}

@@ -1,0 +1,24 @@
+@startuml
+actor "Chủ sân" as Owner
+participant "React Dashboard" as UI
+participant "VenueController" as Controller
+participant "VenueService" as Service
+participant "JdbcVenueDao (DAO)" as Venues
+database "MySQL" as DB
+
+Owner -> UI: Mở dashboard
+UI -> Controller: GET /api/venues/mine + JWT
+Controller -> Service: listMyVenues(email)
+Service -> Venues: Tìm sân theo owner_id
+Venues -> DB: SELECT sân đang hoạt động
+DB --> Venues: Danh sách sân
+Venues --> UI: Danh sách sân
+Owner -> UI: Thêm / sửa / ẩn sân
+UI -> Controller: POST / PUT / DELETE + JWT
+Controller -> Service: Thực hiện thao tác theo use case
+Service -> Venues: Kiểm tra chủ sở hữu, validation, lưu thay đổi
+Venues -> DB: INSERT / UPDATE (ẩn mềm)
+DB --> Venues: Kết quả
+Service --> UI: Kết quả thao tác
+UI --> Owner: Cập nhật dashboard và danh sách
+@enduml
