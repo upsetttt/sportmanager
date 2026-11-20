@@ -1,91 +1,152 @@
-# Sân Nhà Mình
+# Sân Nhà Mình – Nền tảng đặt sân thể thao
 
-Website đặt lịch sân thể thao với giao diện React, Bootstrap và REST API Spring Boot, dùng mô hình Service/DAO với JDBC và MySQL.
+Dự án mới được xây dựng từ đầu theo mô hình frontend/backend tách biệt, dùng đúng môi trường phát triển đã thống nhất: React + Vite, Java 21 + Spring Boot 3, MySQL 8, IntelliJ IDEA và VS Code.
 
-## Yêu cầu
+## 1. Công nghệ
 
-- Node.js 20+
-- Java 21+
-- Maven Wrapper tải và sử dụng Maven 3.9.15 tự động
-- MySQL 8+
+| Thành phần | Công nghệ |
+|---|---|
+| Frontend | React 18, Vite 6, JavaScript, CSS responsive, Axios, Lucide |
+| Backend | Java 21, Spring Boot 3.5, Spring Security, JWT, JDBC Template |
+| Database | MySQL 8+, InnoDB, UTF-8MB4 |
+| API | REST/JSON, Bearer JWT |
+| IDE | IntelliJ IDEA (backend), VS Code (frontend) |
 
-## Chạy ứng dụng
+## 2. Cấu trúc thư mục
 
-1. Cài đặt và khởi động MySQL 8+. Tạo database `sannhaminh`, hoặc để URL mặc định tự tạo database. Các thông tin kết nối, JWT và tài khoản chủ sân khởi tạo được cấu hình trong `.env` ở thư mục gốc. File này nằm trong `.gitignore`; không chia sẻ hoặc đưa thông tin bí mật lên Git.
-2. Mở terminal tại thư mục gốc dự án và chạy backend bằng Maven Wrapper (không cần cài Maven toàn máy):
-
-   ```powershell
-   .\backend\mvnw.cmd -f .\backend\pom.xml spring-boot:run
-   ```
-
-   Đợi đến khi log báo `Tomcat started on port 8080` rồi giữ terminal này mở. Kiểm tra API tại `http://localhost:8080/api/venues`; kết quả HTTP 200 xác nhận backend đã sẵn sàng.
-
-   Backend khởi tạo các bảng còn thiếu bằng `schema.sql`; tầng DAO dùng `JdbcTemplate`/JDBC và MySQL Connector/J, nghiệp vụ tài khoản, sân và đặt lịch được tách qua service interface và implementation. Có thể tạo cơ sở dữ liệu/bảng trước bằng script [database/sannhaminh.sql](./database/sannhaminh.sql).
-
-   Thông tin tài khoản chủ sân mẫu:
-
-   - Email: `owner@sannhaminh.local`
-   - Mật khẩu: `SanNhaMinh@2026`
-
-   Tài khoản được tạo tự động khi backend khởi động lần đầu theo `OWNER_EMAIL` và `OWNER_PASSWORD` trong `.env`. Nếu tài khoản đã tồn tại trong database, mật khẩu hiện có không bị ghi đè. Với database cũ, các sân mẫu chưa có chủ sở hữu sẽ được gán cho tài khoản này. Nếu đã đổi thông tin trong `.env` hoặc mật khẩu trong database, hãy đăng nhập bằng thông tin hiện tại của tài khoản.
-
-   Nếu kết nối MySQL thất bại, kiểm tra `MYSQL_URL`, `MYSQL_USER` và `MYSQL_PASSWORD` trong `.env`. `JWT_SECRET` là bắt buộc và phải dài tối thiểu 32 byte. Trước khi triển khai, hãy thay mật khẩu mẫu và JWT secret bằng thông tin bí mật riêng.
-
-3. Mở terminal thứ hai tại thư mục gốc và chạy frontend:
-
-   ```powershell
-   npm.cmd install
-   npm.cmd run dev
-   ```
-
-   Dùng `npm.cmd` trong PowerShell để tránh lỗi Execution Policy khi chạy `npm.ps1`. Giữ terminal này mở và mở địa chỉ Vite được in ra, thường là `http://localhost:5173`.
-
-4. Đăng nhập bằng tài khoản chủ sân mẫu ở trên. Nếu chọn mở giao diện tại `http://127.0.0.1:5173`, backend cũng cho phép origin này qua CORS; địa chỉ `http://localhost:5173` được hỗ trợ tương tự. Không dùng địa chỉ khác nếu chưa thêm địa chỉ đó vào danh sách origin trong `backend/src/main/java/vn/sannhaminh/booking/config/WebConfig.java`.
-
-Nếu giao diện báo lỗi kết nối hoặc `ERR_CONNECTION_REFUSED`, kiểm tra cả hai terminal: backend phải chạy ở cổng `8080`, frontend ở cổng `5173`, và MySQL phải đang chạy. Lỗi CORS thường do frontend được mở bằng một địa chỉ hoặc cổng khác với origin đã cho phép.
-
-## Kiểm thử
-
-Chạy kiểm thử tích hợp backend với H2:
-
-```powershell
-.\backend\mvnw.cmd -f .\backend\pom.xml clean verify
+```text
+SanNhaMinh_New/
+├── backend/
+│   ├── pom.xml
+│   ├── .env.example
+│   └── src/main/
+│       ├── java/vn/sannhaminh/
+│       │   ├── auth/                 # Đăng ký, đăng nhập
+│       │   ├── api/                  # API nghiệp vụ và phân quyền
+│       │   ├── config/               # Security, khởi tạo Admin
+│       │   └── security/             # JWT, principal, filter
+│       └── resources/
+│           ├── application.yml
+│           └── schema.sql
+├── frontend/
+│   ├── package.json
+│   ├── vite.config.js
+│   └── src/
+│       ├── services/api.js
+│       ├── App.jsx
+│       └── styles.css
+├── database/sannhaminh.sql
+└── docs/
 ```
 
-Hiện có các test kiểm tra validation đăng ký, tạo/sửa/ẩn sân và quyền chủ sở hữu, đặt/hủy lịch, ngăn đặt trùng, giữ lịch sử sau khi ẩn sân và phân tách dữ liệu giữa tài khoản.
+## 3. Chuẩn bị MySQL Workbench
 
-Maven Wrapper được ghim ở phiên bản 3.9.15 trong `backend/.mvn/wrapper/maven-wrapper.properties`; lần chạy đầu cần có kết nối Internet để tải Maven. Có thể chạy lệnh Wrapper ở trên từ terminal VS Code hoặc PowerShell. Nếu VS Code không tìm thấy task, chạy trực tiếp lệnh Wrapper thay vì phụ thuộc vào task. Có thể chọn **Terminal → Run Task → Backend: Tests** để kiểm thử khi task có sẵn.
+1. Mở MySQL Workbench và kết nối MySQL Server 8.
+2. Mở file `database/sannhaminh.sql` bằng **File → Open SQL Script**.
+3. Nhấn nút tia sét **Execute** để chạy toàn bộ script. Script tự tạo và chọn database `sannhaminh_new`, sau đó tạo các bảng và danh mục mẫu.
+4. Trong mục **SCHEMAS**, nhấn Refresh và kiểm tra database `sannhaminh_new` cùng các bảng `accounts`, `categories`, `venues`, `bookings`, `payments`, `reviews`, `favorites`, `notifications`, `audit_logs`, `venue_schedules`.
+5. Nếu đang chuyển dữ liệu cũ, sao lưu trước và làm theo `docs/MIGRATION_FROM_OLD_VERSION.md`; không xóa database cũ khi chưa sao lưu.
 
-## Phân tích và thiết kế
+## 4. Cấu hình và chạy backend bằng VS Code / IntelliJ
 
-- Đặc tả Use Case (luồng chính và ngoại lệ): [docs/use-cases.md](./docs/use-cases.md)
-- Biểu đồ Use Case tổng quát: [docs/uml/use-case-overview.puml](./docs/uml/use-case-overview.puml)
-- Sequence đặt lịch: [docs/uml/booking-sequence.puml](./docs/uml/booking-sequence.puml)
-- Sequence quản lý sân: [docs/uml/venue-management-sequence.puml](./docs/uml/venue-management-sequence.puml)
-- SQL tạo database và cấu trúc bảng: [database/sannhaminh.sql](./database/sannhaminh.sql)
+1. Mở thư mục `SanNhaMinh_New/backend`.
+2. Sao chép `backend/.env.example` thành `backend/.env`.
+3. Mở `backend/.env` và thay `DB_PASSWORD=YOUR_MYSQL_ROOT_PASSWORD` bằng mật khẩu MySQL thật. Nếu tài khoản MySQL không phải `root`, sửa `DB_USERNAME` tương ứng. Không đưa file `.env` lên Git.
+4. `application.yml` đã nạp file `.env` cục bộ (khi chạy với working directory là thư mục `backend`) và kết nối mặc định tới database `sannhaminh_new` trên cổng 3306.
+5. Mở Terminal tại thư mục `backend` và chạy:
 
-Backend dùng `MYSQL_URL`, `MYSQL_USER`, `MYSQL_PASSWORD` và `PORT` để cấu hình môi trường; cổng mặc định là `8080`. Frontend mặc định gọi API tại `http://localhost:8080/api`; có thể thay bằng biến `VITE_API_URL`. CORS cho phép frontend từ `http://localhost:5173` và `http://127.0.0.1:5173`.
+```powershell
+.\mvnw.cmd spring-boot:run
+```
 
-`JWT_SECRET` là bắt buộc, phải là chuỗi bí mật riêng, ngẫu nhiên và dài tối thiểu 32 byte; ứng dụng sẽ không khởi động nếu chưa cấu hình.
+Nếu dự án không có `mvnw.cmd`, dùng `mvn spring-boot:run` khi đã cài Maven.
 
-## REST API
+6. Kiểm tra `http://localhost:8080/api/health`; kết quả mong đợi có `status: UP`.
 
-| Method | Endpoint | Mô tả |
-| --- | --- | --- |
-| `POST` | `/api/auth/register` | Đăng ký tài khoản khách hàng (`PLAYER`) |
-| `POST` | `/api/auth/login` | Đăng nhập và nhận JWT có hiệu lực 12 giờ |
-| `GET`, `PUT` | `/api/auth/me` | Xem hoặc cập nhật hồ sơ của tài khoản hiện tại |
-| `GET` | `/api/venues` | Danh sách sân |
-| `GET` | `/api/venues/{id}/availability?date=YYYY-MM-DD` | Các khung giờ đã được đặt |
-| `GET` | `/api/venues/mine` | Danh sách sân thuộc tài khoản chủ sân |
-| `POST`, `PUT`, `DELETE` | `/api/venues`, `/api/venues/{id}` | Thêm, sửa hoặc ẩn sân của chính chủ sở hữu |
-| `POST` | `/api/bookings` | Tạo lịch đặt đã đăng nhập; thời lượng từ 1 đến 4 giờ |
-| `GET` | `/api/bookings` | Tra cứu lịch theo tài khoản đang đăng nhập |
-| `DELETE` | `/api/bookings/{id}` | Hủy lịch của tài khoản đang đăng nhập, trước giờ bắt đầu |
-| `GET` | `/api/bookings/managed` | Chủ sân xem lịch đặt tại sân của mình |
+Tài khoản Admin mặc định chỉ được tạo khi database chưa có tài khoản ADMIN. Thông tin được lấy từ `ADMIN_EMAIL` và `ADMIN_PASSWORD` trong `backend/.env`; hãy đổi mật khẩu trước lần chạy đầu tiên. Nếu đã có ADMIN trong database, ứng dụng không tự ghi đè mật khẩu hiện tại.
 
-Gửi JWT trong header `Authorization: Bearer <token>` cho API cần đăng nhập. Đăng ký công khai luôn tạo tài khoản khách hàng; vai trò chủ sân chỉ được cấp cho tài khoản khởi tạo trong cấu hình. Khách hàng quản lý hồ sơ và lịch đặt của mình; chủ sân chỉ sửa/ẩn các sân do chính tài khoản đó quản lý. Xóa sân là thao tác ẩn, giữ nguyên lịch sử đặt. Lịch đặt có khung giờ chồng lấn trên cùng sân sẽ bị từ chối. Dữ liệu sân mẫu được tự động thêm khi database chưa có sân.
+## 5. Chạy frontend bằng VS Code
 
-## Ghi chú triển khai
+1. Mở VS Code, chọn **File → Open Folder**, mở `SanNhaMinh_New/frontend`.
+2. Mở Terminal → New Terminal.
+3. Cài thư viện:
 
-Chủ sân mẫu dùng mật khẩu phát triển được cấu hình trong `.env`; phải đổi mật khẩu và JWT secret trước khi triển khai. Cổng thanh toán, xác minh email, khôi phục mật khẩu và quyền quản trị tập trung chưa được tích hợp. Cần chọn nhà cung cấp thanh toán và cấu hình thông tin xác thực trước khi bổ sung giao dịch thật. `schema.sql` chỉ khởi tạo các bảng còn thiếu; dùng migration được quản lý (Flyway/Liquibase) nếu cần thay đổi schema ở production.
+```powershell
+npm install
+```
+
+4. Chạy ứng dụng:
+
+```powershell
+npm run dev
+```
+
+5. Truy cập `http://localhost:5173`.
+
+Vite đã cấu hình proxy `/api` tới `http://localhost:8080`, vì vậy không cần tự sửa URL API khi chạy local.
+
+## 6. Vai trò và chức năng
+
+### PLAYER – Khách hàng
+- Đăng ký, đăng nhập với vai trò khách hàng.
+- Tìm kiếm sân theo tên, địa chỉ, khu vực và bộ môn.
+- Xem thông tin sân, giá thuê, đánh giá.
+- Gửi yêu cầu đặt sân theo ngày, giờ và thời lượng.
+- Theo dõi lịch đặt; hủy lịch theo trạng thái cho phép.
+- Lưu/bỏ lưu sân yêu thích.
+- Chọn chuyển khoản hoặc tiền mặt; xem trạng thái thanh toán.
+- Đánh giá sân sau khi lịch đặt hoàn thành.
+- Nhận và đánh dấu thông báo đã đọc.
+
+### OWNER – Chủ sân
+- Đăng ký tài khoản chủ sân.
+- Thêm, sửa, lưu trữ sân; sân mới chờ Admin duyệt.
+- Cấu hình giờ mở cửa, giờ đóng cửa, ngày nghỉ và bước thời lượng.
+- Xem yêu cầu đặt sân; xác nhận hoặc từ chối.
+- Đánh dấu lịch đã xác nhận là hoàn thành.
+- Theo dõi doanh thu và lịch đặt.
+- Xem đánh giá, phản hồi khách hàng.
+
+### ADMIN – Quản trị viên
+- Dashboard thống kê tài khoản, sân, booking, thanh toán và doanh thu.
+- Thêm/sửa tài khoản; khóa, mở khóa, vô hiệu hóa và đặt lại mật khẩu.
+- Thêm/sửa sân, duyệt/từ chối, lưu trữ và khôi phục sân.
+- Theo dõi và hủy booking khi cần.
+- Xác nhận thanh toán thủ công; xác nhận hoàn tiền sau khi đã hoàn tiền thực tế ngoài hệ thống.
+- Ẩn/hiện đánh giá.
+- Thêm/sửa/vô hiệu hóa danh mục.
+- Gửi thông báo theo nhóm người dùng.
+- Theo dõi nhật ký thao tác quản trị và doanh thu.
+
+## 7. Quy tắc nghiệp vụ quan trọng
+
+- Booking mới có trạng thái `PENDING_OWNER`; chỉ chủ sân mới xác nhận hoặc từ chối.
+- Hệ thống chặn đặt trùng khung giờ đối với booking `PENDING_OWNER` và `CONFIRMED`.
+- Nếu chủ sân đã cấu hình giờ hoạt động, thời gian đặt phải nằm trong khung giờ mở cửa.
+- Chỉ booking `CONFIRMED` mới được tạo thông tin thanh toán.
+- Chuyển khoản/tiền mặt tạo giao dịch `PENDING`; Admin xác nhận thủ công mới chuyển sang `PAID`.
+- Khi hủy booking đã thanh toán, payment chuyển `REFUND_PENDING`. Admin chỉ đánh dấu `REFUNDED` sau khi tiền đã được hoàn thực tế bên ngoài hệ thống.
+- Tài khoản/sân/danh mục được vô hiệu hóa hoặc lưu trữ mềm; không xóa lịch sử booking và thanh toán.
+- VNPay/MoMo đang tắt. API từ chối tạo giao dịch online cho đến khi tích hợp merchant, chữ ký và callback/IPN thật.
+
+## 8. Bảo mật và triển khai
+
+- Mật khẩu được băm bằng BCrypt.
+- API bảo vệ bằng JWT Bearer Token và phân quyền PLAYER/OWNER/ADMIN.
+- Tài khoản bị khóa/vô hiệu hóa không đăng nhập được.
+- Các thao tác quan trọng của Admin được ghi vào `audit_logs`.
+- Trước khi triển khai internet: thay JWT secret, mật khẩu Admin, cấu hình HTTPS, CORS domain thật, giới hạn request, backup MySQL và bổ sung xác minh email/khôi phục mật khẩu.
+
+## 9. Kiểm thử
+
+Xem `docs/TEST_CHECKLIST.md` để kiểm tra lần lượt đăng ký, đăng nhập, quyền truy cập, đặt sân, xử lý booking, thanh toán, hoàn tiền và thao tác Admin.
+
+> Trạng thái bản bàn giao: mã nguồn và cấu trúc dự án đã được tạo. Trong môi trường đóng gói hiện tại không có Maven executable và npm install bị timeout khi tải dependency, do đó chưa thể xác nhận Maven test hoặc Vite production build. Cần cài dependency trên máy phát triển và chạy checklist trước khi dùng thật.
+
+## 10. Xử lý lỗi kết nối và lưu sân
+
+- `Access denied for user`: kiểm tra `DB_USERNAME` và `DB_PASSWORD` trong `backend/.env`.
+- `Unknown database 'sannhaminh_new'`: chạy `database/sannhaminh.sql` trong MySQL Workbench và kiểm tra schema đã chọn.
+- `Communications link failure`: khởi động MySQL Server và kiểm tra cổng 3306.
+- Thêm sân bằng tài khoản OWNER gọi `POST /api/owner/venues`; tài khoản ADMIN dùng `POST /api/admin/venues` và cần `ownerId`.
+- Nếu API trả lỗi, giao diện giữ nguyên biểu mẫu và hiển thị mã HTTP cùng thông báo backend; mở trình duyệt Developer Tools → Network để xem request/response.
