@@ -1,0 +1,46 @@
+server:
+  port: ${SERVER_PORT:8080}
+spring:
+  config:
+    import: optional:file:.env[.properties]
+  application:
+    name: san-nha-minh-api
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3306/sannhaminh_new?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Ho_Chi_Minh}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:root}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      pool-name: SanNhaMinhHikariPool
+      maximum-pool-size: ${DB_POOL_MAX_SIZE:10}
+      minimum-idle: ${DB_POOL_MIN_IDLE:2}
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      validation-timeout: 5000
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema.sql
+      continue-on-error: true
+  jackson:
+    time-zone: Asia/Ho_Chi_Minh
+app:
+  jwt:
+    secret: ${JWT_SECRET:change-this-secret-key-to-a-long-random-value-at-least-32-chars}
+    expiration-hours: ${JWT_EXPIRATION_HOURS:12}
+
+  payment:
+    vnpay-enabled: ${VNPAY_ENABLED:false}
+    momo-enabled: ${MOMO_ENABLED:false}
+
+  admin:
+    email: ${ADMIN_EMAIL:admin@sannhaminh.local}
+    password: ${ADMIN_PASSWORD:Admin@123456}
+    name: ${ADMIN_NAME:Quản trị viên}
+
+  bootstrap-owner:
+    email: ${BOOTSTRAP_OWNER_EMAIL:owner@sannhaminh.local}
+    password: ${BOOTSTRAP_OWNER_PASSWORD:Owner@123456}
+    name: ${BOOTSTRAP_OWNER_NAME:Chủ sân mặc định}
+    phone: ${BOOTSTRAP_OWNER_PHONE:0900000000}

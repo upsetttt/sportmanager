@@ -1,0 +1,28 @@
+@startuml
+left to right direction
+actor "Khách hàng" as Player
+actor "Chủ sân" as Owner
+rectangle "Sân Nhà Mình" {
+  usecase "Đăng ký / đăng nhập" as UCAuth
+  usecase "Tìm kiếm và lọc sân" as UCSearch
+  usecase "Xem giờ trống" as UCAvailability
+  usecase "Đặt lịch sân" as UCBook
+  usecase "Xem / hủy lịch của tôi" as UCMyBookings
+  usecase "Cập nhật hồ sơ" as UCProfile
+  usecase "Quản lý sân CRUD" as UCManageVenue
+  usecase "Theo dõi lịch tại sân" as UCManagedBookings
+}
+Player --> UCAuth
+Player --> UCSearch
+Player --> UCAvailability
+Player --> UCBook
+Player --> UCMyBookings
+Player --> UCProfile
+Owner --> UCAuth
+Owner --> UCManageVenue
+Owner --> UCManagedBookings
+Owner --> UCAvailability
+UCBook .> UCAvailability : <<include>>
+UCManageVenue .> UCAuth : <<include>>
+UCManagedBookings .> UCAuth : <<include>>
+@enduml
