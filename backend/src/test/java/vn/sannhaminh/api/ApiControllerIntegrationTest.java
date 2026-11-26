@@ -5,17 +5,30 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
-import org.springframework.security.test.context.support.WithMockUser;
-import vn.sannhaminh.config.SecurityConfig;
-import vn.sannhaminh.security.JwtService;
+import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.PreparedStatementCreator;
+import org.springframework.jdbc.support.KeyHolder;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 import vn.sannhaminh.config.ApiExceptionHandler;
+import vn.sannhaminh.config.SecurityConfig;
+import vn.sannhaminh.security.AuthUser;
+import vn.sannhaminh.security.JwtService;
+
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
+
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.BDDMockito.given;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(controllers = ApiController.class)
@@ -25,11 +38,16 @@ class ApiControllerIntegrationTest {
     @MockBean JdbcTemplate db;
     @MockBean JwtService jwtService;
 
+    private static Authentication authAs(long id, String role) {
+        AuthUser user = new AuthUser(id, role.toLowerCase() + "@test.vn", role, role);
+        return new UsernamePasswordAuthenticationToken(user, null, List.of(new SimpleGrantedAuthority("ROLE_" + role)));
+    }
+
     @Test void healthEndpointReturnsUp() throws Exception {
         mvc.perform(get("/api/health")).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("UP"));
     }
 
-    @Test @WithMockUser(roles = "PLAYER") void categoriesEndpointReturnsDatabaseRows() throws Exception {
+    @Test void categoriesEndpointIsPublicAndReturnsDatabaseRows() throws Exception {
         given(db.queryForList(contains("FROM categories"))).willReturn(List.of(Map.of("id", 1, "name", "Bóng đá")));
         mvc.perform(get("/api/categories")).andExpect(status().isOk()).andExpect(jsonPath("$[0].name").value("Bóng đá"));
     }
@@ -66,5 +84,58 @@ class ApiControllerIntegrationTest {
     @Test void paginationRejectsInvalidPageSize() throws Exception {
         mvc.perform(get("/api/venues/page").param("page", "-1").param("size", "100"))
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.message").value("page phải lớn hơn hoặc bằng 0"));
+    }
+
+    @Test void adminCreateAccountEncodesPasswordAndReturnsId() throws Exception {
+        given(db.queryForObject(contains("FROM accounts WHERE email=?"), eq(Integer.class), eq("new@test.vn"))).willReturn(0);
+        given(db.update(any(PreparedStatementCreator.class), any(KeyHolder.class))).willAnswer(inv -> {
+            KeyHolder kh = inv.getArgument(1);
+            kh.getKeyList().add(Map.of("GENERATED_KEY", 42L));
+            return 1;
+        });
+        mvc.perform(post("/api/admin/accounts").with(authentication(authAs(1, "ADMIN")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"fullName\":\"User Moi\",\"email\":\"new@test.vn\",\"password\":\"Secret123!\",\"role\":\"OWNER\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(42));
+    }
+
+    @Test void adminResetPasswordWorksWithoutBeanInstantiationFailure() throws Exception {
+        given(db.update(contains("SET password_hash=?"), anyString(), eq(5L))).willReturn(1);
+        mvc.perform(patch("/api/admin/accounts/5/password").with(authentication(authAs(1, "ADMIN")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"password\":\"NewPass123!\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+    }
+
+    @Test void createPaymentRejectsOverwritingAlreadyPaidPayment() throws Exception {
+        given(db.queryForList(contains("FROM bookings WHERE id=? AND player_id=?"), eq(10L), eq(5L)))
+                .willReturn(List.of(Map.of("id", 10L, "status", "CONFIRMED", "total_amount", new BigDecimal("300000"))));
+        given(db.queryForList(contains("FROM payments WHERE booking_id=?"), eq(10L)))
+                .willReturn(List.of(Map.of("id", 77L, "status", "PAID")));
+
+        mvc.perform(post("/api/payments").with(authentication(authAs(5, "PLAYER")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"bookingId\":10,\"method\":\"CASH\"}"))
+                .andExpect(status().isConflict());
+    }
+
+    @Test void adminCancelBookingDoesNotMutatePaymentsWhenBookingAlreadyCompleted() throws Exception {
+        given(db.queryForList(contains("FROM bookings WHERE id=?"), eq(15L)))
+                .willReturn(List.of(Map.of("id", 15L, "player_id", 5L, "owner_id", 2L, "booking_code", "SNM15", "status", "COMPLETED")));
+        given(db.update(contains("UPDATE bookings SET status='CANCELLED'"), eq(15L))).willReturn(0);
+
+        mvc.perform(patch("/api/admin/bookings/15/cancel").with(authentication(authAs(1, "ADMIN"))))
+                .andExpect(status().isConflict());
+        verify(db, never()).update(contains("UPDATE payments"), eq(15L));
+    }
+
+    @Test void saveSchedulesRejectsCloseTimeBeforeOpenTime() throws Exception {
+        given(db.queryForObject(contains("FROM venues WHERE id=? AND owner_id=?"), eq(Integer.class), eq(3L), eq(2L))).willReturn(1);
+        mvc.perform(put("/api/owner/venues/3/schedules").with(authentication(authAs(2, "OWNER")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("[{\"dayOfWeek\":1,\"openTime\":\"20:00\",\"closeTime\":\"08:00\",\"slotMinutes\":60,\"isClosed\":false}]"))
+                .andExpect(status().isBadRequest());
     }
 }
