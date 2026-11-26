@@ -201,4 +201,55 @@ class ApiControllerIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON).content("{\"accept\":true}"))
                 .andExpect(status().isConflict());
     }
+
+    @Test void adminCanReadAndDeleteUserAccount() throws Exception {
+        given(db.queryForList(contains("FROM accounts WHERE id=?"), eq(103L)))
+                .willReturn(List.of(Map.of("id", 103L, "full_name", "Player A", "email", "p@test.vn", "role", "PLAYER", "status", "ACTIVE")));
+        given(db.queryForObject(contains("FROM venues WHERE owner_id=?"), eq(Integer.class), eq(103L))).willReturn(0);
+        given(db.queryForObject(contains("FROM bookings WHERE player_id=?"), eq(Integer.class), eq(103L))).willReturn(3);
+
+        mvc.perform(get("/api/admin/accounts/103").with(authentication(authAs(1, "ADMIN"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.email").value("p@test.vn"))
+                .andExpect(jsonPath("$.booking_count").value(3));
+
+        given(db.queryForList(contains("SELECT role, status FROM accounts WHERE id=?"), eq(103L)))
+                .willReturn(List.of(Map.of("role", "PLAYER", "status", "ACTIVE")));
+        mvc.perform(delete("/api/admin/accounts/103").with(authentication(authAs(1, "ADMIN"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("DELETED"));
+    }
+
+    @Test void adminCannotDeleteAdminOrSelf() throws Exception {
+        mvc.perform(delete("/api/admin/accounts/1").with(authentication(authAs(1, "ADMIN"))))
+                .andExpect(status().isConflict());
+
+        given(db.queryForList(contains("SELECT role, status FROM accounts WHERE id=?"), eq(2L)))
+                .willReturn(List.of(Map.of("role", "ADMIN", "status", "ACTIVE")));
+        mvc.perform(delete("/api/admin/accounts/2").with(authentication(authAs(1, "ADMIN"))))
+                .andExpect(status().isConflict());
+    }
+
+    @Test void adminAndOwnerPitchCrudDetailAndDeleteWork() throws Exception {
+        given(db.queryForList(contains("FROM venues v JOIN accounts a ON a.id=v.owner_id"), eq(10L)))
+                .willReturn(List.of(Map.of("id", 10L, "name", "Sân bóng đá 7 người", "category_name", "Bóng đá", "status", "ACTIVE")));
+        given(db.queryForList(contains("FROM venue_schedules WHERE venue_id=?"), eq(10L)))
+                .willReturn(List.of());
+
+        mvc.perform(get("/api/admin/venues/10").with(authentication(authAs(1, "ADMIN"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("Sân bóng đá 7 người"));
+
+        given(db.update(contains("UPDATE venues SET status='ARCHIVED' WHERE id=? AND status<>'ARCHIVED'"), eq(10L)))
+                .willReturn(1);
+        mvc.perform(delete("/api/admin/venues/10").with(authentication(authAs(1, "ADMIN"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("ARCHIVED"));
+
+        given(db.queryForList(contains("WHERE v.id=? AND v.owner_id=?"), eq(10L), eq(101L)))
+                .willReturn(List.of(Map.of("id", 10L, "name", "Sân bóng đá 7 người", "status", "ACTIVE")));
+        mvc.perform(get("/api/owner/venues/10").with(authentication(authAs(101, "OWNER"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(10));
+    }
 }

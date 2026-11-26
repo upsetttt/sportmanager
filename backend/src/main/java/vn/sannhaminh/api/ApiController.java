@@ -269,6 +269,18 @@ public class ApiController {
                 uid(u));
     }
 
+    @GetMapping("/owner/venues/{id}")
+    @PreAuthorize("hasRole('OWNER')")
+    public Map<String, Object> ownerVenueDetail(@AuthenticationPrincipal AuthUser u, @PathVariable("id") long id) {
+        var rows = db.queryForList(
+                "SELECT v.*,c.name category_name FROM venues v LEFT JOIN categories c ON c.id=v.category_id WHERE v.id=? AND v.owner_id=?",
+                id, uid(u));
+        if (rows.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy sân");
+        Map<String, Object> venue = new LinkedHashMap<>(rows.get(0));
+        venue.put("schedules", db.queryForList("SELECT * FROM venue_schedules WHERE venue_id=? ORDER BY day_of_week", id));
+        return venue;
+    }
+
     @PostMapping("/owner/venues")
     @Transactional
     @PreAuthorize("hasRole('OWNER')")
@@ -647,14 +659,48 @@ public class ApiController {
         Long categoryId = parseOptionalCategoryId(data);
         String city = s(data, "city", "Hà Nội").trim();
         if (city.isEmpty()) city = "Hà Nội";
-        int updated = db.update(
-                "UPDATE venues SET owner_id=?,category_id=?,name=?,description=?,address=?,district=?,city=?,image_url=?,price_per_hour=? WHERE id=?",
-                owner, categoryId, name, s(data, "description", "").trim(), address, s(data, "district", "").trim(),
-                city, s(data, "imageUrl", "").trim(), price, id);
+        String rawStatus = s(data, "status", "").trim().toUpperCase();
+        int updated;
+        if (!rawStatus.isEmpty()) {
+            if (!List.of("PENDING", "ACTIVE", "REJECTED", "ARCHIVED").contains(rawStatus)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Trạng thái sân không hợp lệ");
+            }
+            updated = db.update(
+                    "UPDATE venues SET owner_id=?,category_id=?,name=?,description=?,address=?,district=?,city=?,image_url=?,price_per_hour=?,status=? WHERE id=?",
+                    owner, categoryId, name, s(data, "description", "").trim(), address, s(data, "district", "").trim(),
+                    city, s(data, "imageUrl", "").trim(), price, rawStatus, id);
+        } else {
+            updated = db.update(
+                    "UPDATE venues SET owner_id=?,category_id=?,name=?,description=?,address=?,district=?,city=?,image_url=?,price_per_hour=? WHERE id=?",
+                    owner, categoryId, name, s(data, "description", "").trim(), address, s(data, "district", "").trim(),
+                    city, s(data, "imageUrl", "").trim(), price, id);
+        }
         if (updated == 0) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy sân");
         db.update("UPDATE bookings SET owner_id=? WHERE venue_id=? AND owner_id<>?", owner, id, owner);
         audit(u, "ADMIN_VENUE_UPDATE", "VENUE", id, null);
         return Map.of("success", true);
+    }
+
+    @GetMapping("/admin/venues/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public Map<String, Object> adminVenueDetail(@PathVariable("id") long id) {
+        var rows = db.queryForList(
+                "SELECT v.*,a.full_name owner_name,a.email owner_email,a.phone owner_phone,c.name category_name FROM venues v JOIN accounts a ON a.id=v.owner_id LEFT JOIN categories c ON c.id=v.category_id WHERE v.id=?",
+                id);
+        if (rows.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy sân");
+        Map<String, Object> venue = new LinkedHashMap<>(rows.get(0));
+        venue.put("schedules", db.queryForList("SELECT * FROM venue_schedules WHERE venue_id=? ORDER BY day_of_week", id));
+        return venue;
+    }
+
+    @DeleteMapping("/admin/venues/{id}")
+    @Transactional
+    @PreAuthorize("hasRole('ADMIN')")
+    public Map<String, Object> adminDeleteVenue(@AuthenticationPrincipal AuthUser u, @PathVariable("id") long id) {
+        int updated = db.update("UPDATE venues SET status='ARCHIVED' WHERE id=? AND status<>'ARCHIVED'", id);
+        if (updated == 0) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy sân hoặc sân đã được lưu trữ");
+        audit(u, "ADMIN_VENUE_DELETE", "VENUE", id, null);
+        return Map.of("success", true, "id", id, "status", "ARCHIVED");
     }
 
     @GetMapping("/admin/dashboard")
@@ -671,8 +717,44 @@ public class ApiController {
 
     @GetMapping("/admin/accounts")
     @PreAuthorize("hasRole('ADMIN')")
-    public List<Map<String, Object>> adminAccounts() {
-        return db.queryForList("SELECT id,full_name,email,phone,role,status,created_at FROM accounts ORDER BY created_at DESC");
+    public List<Map<String, Object>> adminAccounts(
+            @RequestParam(name = "q", required = false) String q,
+            @RequestParam(name = "role", required = false) String role,
+            @RequestParam(name = "status", required = false) String status) {
+        String sql = "SELECT id,full_name,email,phone,role,status,created_at FROM accounts";
+        List<String> where = new ArrayList<>();
+        List<Object> args = new ArrayList<>();
+        if (q != null && !q.isBlank()) {
+            where.add("(full_name LIKE ? OR email LIKE ? OR phone LIKE ?)");
+            String like = "%" + q.trim() + "%";
+            args.add(like); args.add(like); args.add(like);
+        }
+        if (role != null && !role.isBlank()) {
+            String normalizedRole = role.trim().toUpperCase();
+            if (!VALID_ROLES.contains(normalizedRole)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Vai trò không hợp lệ");
+            where.add("role=?");
+            args.add(normalizedRole);
+        }
+        if (status != null && !status.isBlank()) {
+            String normalizedStatus = status.trim().toUpperCase();
+            if (!VALID_ACCOUNT_STATUSES.contains(normalizedStatus)) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Trạng thái tài khoản không hợp lệ");
+            where.add("status=?");
+            args.add(normalizedStatus);
+        }
+        if (!where.isEmpty()) sql += " WHERE " + String.join(" AND ", where);
+        sql += " ORDER BY created_at DESC";
+        return args.isEmpty() ? db.queryForList(sql) : db.queryForList(sql, args.toArray());
+    }
+
+    @GetMapping("/admin/accounts/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public Map<String, Object> adminAccountDetail(@PathVariable("id") long id) {
+        var rows = db.queryForList("SELECT id,full_name,email,phone,role,status,created_at,updated_at FROM accounts WHERE id=?", id);
+        if (rows.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy tài khoản");
+        Map<String, Object> acc = new LinkedHashMap<>(rows.get(0));
+        acc.put("venue_count", db.queryForObject("SELECT COUNT(*) FROM venues WHERE owner_id=? AND status<>'ARCHIVED'", Integer.class, id));
+        acc.put("booking_count", db.queryForObject("SELECT COUNT(*) FROM bookings WHERE player_id=?", Integer.class, id));
+        return acc;
     }
 
     @PostMapping("/admin/accounts")
@@ -714,11 +796,43 @@ public class ApiController {
         if (duplicate != null && duplicate > 0) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Email đã được sử dụng bởi tài khoản khác");
         }
-        int updated = db.update("UPDATE accounts SET full_name=?,email=?,phone=?,role=? WHERE id=? AND status<>'DELETED'",
-                fullName, email, s(data, "phone", "").trim(), role, id);
+        String rawStatus = s(data, "status", "").trim().toUpperCase();
+        int updated;
+        if (!rawStatus.isEmpty()) {
+            if (!VALID_ACCOUNT_STATUSES.contains(rawStatus)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Trạng thái tài khoản không hợp lệ");
+            }
+            if (id == uid(u) && !"ACTIVE".equals(rawStatus)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Không thể tự thay đổi trạng thái tài khoản đang đăng nhập");
+            }
+            if ("ADMIN".equals(role) && ("LOCKED".equals(rawStatus) || "DELETED".equals(rawStatus))) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Không thể khóa hoặc vô hiệu hóa tài khoản quản trị");
+            }
+            updated = db.update("UPDATE accounts SET full_name=?,email=?,phone=?,role=?,status=? WHERE id=?",
+                    fullName, email, s(data, "phone", "").trim(), role, rawStatus, id);
+        } else {
+            updated = db.update("UPDATE accounts SET full_name=?,email=?,phone=?,role=? WHERE id=? AND status<>'DELETED'",
+                    fullName, email, s(data, "phone", "").trim(), role, id);
+        }
         if (updated == 0) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy tài khoản hoặc tài khoản đã bị vô hiệu hóa");
         audit(u, "ADMIN_ACCOUNT_UPDATE", "ACCOUNT", id, role);
         return Map.of("success", true);
+    }
+
+    @DeleteMapping("/admin/accounts/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public Map<String, Object> adminDeleteAccount(@AuthenticationPrincipal AuthUser u, @PathVariable("id") long id) {
+        if (id == uid(u)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Không thể tự xóa tài khoản đang đăng nhập");
+        }
+        var rows = db.queryForList("SELECT role, status FROM accounts WHERE id=?", id);
+        if (rows.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy tài khoản");
+        if ("ADMIN".equals(rows.get(0).get("role"))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Không thể vô hiệu hóa tài khoản quản trị");
+        }
+        db.update("UPDATE accounts SET status='DELETED' WHERE id=?", id);
+        audit(u, "ADMIN_ACCOUNT_DELETE", "ACCOUNT", id, null);
+        return Map.of("success", true, "id", id, "status", "DELETED");
     }
 
     @PatchMapping("/admin/accounts/{id}/status")
@@ -756,8 +870,33 @@ public class ApiController {
 
     @GetMapping("/admin/venues")
     @PreAuthorize("hasRole('ADMIN')")
-    public List<Map<String, Object>> adminVenues() {
-        return db.queryForList("SELECT v.*,a.full_name owner_name,c.name category_name FROM venues v JOIN accounts a ON a.id=v.owner_id LEFT JOIN categories c ON c.id=v.category_id ORDER BY v.created_at DESC");
+    public List<Map<String, Object>> adminVenues(
+            @RequestParam(name = "q", required = false) String q,
+            @RequestParam(name = "categoryId", required = false) Long categoryId,
+            @RequestParam(name = "status", required = false) String status) {
+        String sql = "SELECT v.*,a.full_name owner_name,c.name category_name FROM venues v JOIN accounts a ON a.id=v.owner_id LEFT JOIN categories c ON c.id=v.category_id";
+        List<String> where = new ArrayList<>();
+        List<Object> args = new ArrayList<>();
+        if (q != null && !q.isBlank()) {
+            where.add("(v.name LIKE ? OR v.address LIKE ? OR v.district LIKE ? OR a.full_name LIKE ?)");
+            String like = "%" + q.trim() + "%";
+            args.add(like); args.add(like); args.add(like); args.add(like);
+        }
+        if (categoryId != null) {
+            where.add("v.category_id=?");
+            args.add(categoryId);
+        }
+        if (status != null && !status.isBlank()) {
+            String normalizedStatus = status.trim().toUpperCase();
+            if (!List.of("PENDING", "ACTIVE", "REJECTED", "ARCHIVED").contains(normalizedStatus)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Trạng thái sân không hợp lệ");
+            }
+            where.add("v.status=?");
+            args.add(normalizedStatus);
+        }
+        if (!where.isEmpty()) sql += " WHERE " + String.join(" AND ", where);
+        sql += " ORDER BY v.created_at DESC";
+        return args.isEmpty() ? db.queryForList(sql) : db.queryForList(sql, args.toArray());
     }
 
     @PatchMapping("/admin/venues/{id}/status")
