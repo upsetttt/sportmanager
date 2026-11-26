@@ -1,16 +1,12 @@
 package vn.sannhaminh.booking.booking;
 
-<<<<<<< HEAD
 import java.math.BigDecimal;
-=======
->>>>>>> 52f75fe7e53e845a7a69ee99bc0c0647ef9481d1
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
 import java.util.Optional;
 
 public interface BookingDao {
-<<<<<<< HEAD
     record VenueInfo(long id, long ownerId, String name, BigDecimal pricePerHour) {}
 
     record Schedule(LocalTime openTime, LocalTime closeTime, boolean closed) {}
@@ -40,13 +36,4 @@ public interface BookingDao {
     void notifyAccount(long accountId, String title, String message);
 
     void audit(long actorId, String action, long bookingId, String detail);
-=======
-    boolean existsOverlappingBooking(Long venueId, LocalDate bookingDate, LocalTime startTime, LocalTime endTime);
-    List<Booking> findByEmailIgnoreCaseOrderByBookingDateAscStartTimeAsc(String email);
-    Optional<Booking> findByIdAndEmailIgnoreCase(Long id, String email);
-    List<Booking> findConfirmedBookings(Long venueId, LocalDate bookingDate);
-    List<Booking> findAllForVenueOwner(Long ownerId);
-    Booking insert(Booking booking);
-    void updateStatus(Booking booking);
->>>>>>> 52f75fe7e53e845a7a69ee99bc0c0647ef9481d1
 }

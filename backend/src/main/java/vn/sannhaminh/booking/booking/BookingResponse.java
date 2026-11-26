@@ -1,6 +1,5 @@
 package vn.sannhaminh.booking.booking;
 
-<<<<<<< HEAD
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -28,25 +27,5 @@ public record BookingResponse(
         return new BookingResponse(b.id(), b.bookingCode(), b.venueId(), b.venueName(), b.address(), b.imageUrl(),
                 b.playDate(), b.startTime(), b.endTime(), b.totalHours(), b.totalAmount(), b.status(),
                 b.customerNote(), b.createdAt());
-=======
-import java.time.LocalDate;
-import java.time.LocalTime;
-
-public record BookingResponse(
-        Long id,
-        String venueName,
-        String customerName,
-        String email,
-        LocalDate bookingDate,
-        LocalTime startTime,
-        LocalTime endTime,
-        long totalPrice,
-        BookingStatus status
-) {
-    public static BookingResponse from(Booking booking) {
-        return new BookingResponse(booking.getId(), booking.getVenue().getName(), booking.getCustomerName(),
-                booking.getEmail(), booking.getBookingDate(), booking.getStartTime(), booking.getEndTime(),
-                booking.getTotalPrice(), booking.getStatus());
->>>>>>> 52f75fe7e53e845a7a69ee99bc0c0647ef9481d1
     }
 }

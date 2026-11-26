@@ -15,7 +15,6 @@ public class DataInitializer implements CommandLineRunner {
     public DataInitializer(JdbcTemplate db, PasswordEncoder encoder){this.db=db;this.encoder=encoder;}
     @Override public void run(String... args){
         Integer count=db.queryForObject("SELECT COUNT(*) FROM accounts WHERE role='ADMIN'",Integer.class);
-<<<<<<< HEAD
         if(count!=null&&count==0) {
             String normalizedEmail = email.trim().toLowerCase();
             Integer emailExists = db.queryForObject("SELECT COUNT(*) FROM accounts WHERE email=?", Integer.class, normalizedEmail);
@@ -23,8 +22,5 @@ public class DataInitializer implements CommandLineRunner {
                 db.update("INSERT INTO accounts(full_name,email,password_hash,role,status) VALUES(?,?,?,'ADMIN','ACTIVE')", name, normalizedEmail, encoder.encode(password));
             }
         }
-=======
-        if(count!=null&&count==0) db.update("INSERT INTO accounts(full_name,email,password_hash,role,status) VALUES(?,?,?,'ADMIN','ACTIVE')",name,email.toLowerCase(),encoder.encode(password));
->>>>>>> 52f75fe7e53e845a7a69ee99bc0c0647ef9481d1
     }
 }
