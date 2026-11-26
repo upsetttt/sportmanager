@@ -138,4 +138,67 @@ class ApiControllerIntegrationTest {
                         .content("[{\"dayOfWeek\":1,\"openTime\":\"20:00\",\"closeTime\":\"08:00\",\"slotMinutes\":60,\"isClosed\":false}]"))
                 .andExpect(status().isBadRequest());
     }
+
+    @Test void ownerCanAcceptPendingBookingRequest() throws Exception {
+        given(db.queryForList(contains("FROM bookings b JOIN venues v"), eq(21L), eq(101L), eq(101L)))
+                .willReturn(List.of(Map.of("id", 21L, "player_id", 103L, "venue_id", 1L,
+                        "play_date", "2026-12-01", "start_time", "18:00:00", "end_time", "19:00:00",
+                        "status", "PENDING_OWNER")));
+        given(db.queryForObject(contains("status='CONFIRMED' AND start_time < ? AND end_time > ?"),
+                eq(Integer.class), eq(1L), eq("2026-12-01"), eq(21L), eq("19:00:00"), eq("18:00:00")))
+                .willReturn(0);
+        given(db.update(contains("UPDATE bookings SET status=?, owner_note=?, owner_id=?"),
+                eq("CONFIRMED"), eq(""), eq(101L), eq(21L))).willReturn(1);
+
+        mvc.perform(patch("/api/owner/bookings/21/decision").with(authentication(authAs(101, "OWNER")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"accept\":true}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.id").value(21))
+                .andExpect(jsonPath("$.status").value("CONFIRMED"));
+
+        verify(db).update(contains("INSERT INTO notifications"), eq(103L), anyString(), anyString());
+        verify(db).update(contains("INSERT INTO audit_logs"), eq(101L), eq("BOOKING_CONFIRMED"), eq("BOOKING"), eq(21L), isNull());
+    }
+
+    @Test void ownerCanRejectPendingBookingRequestWithNote() throws Exception {
+        given(db.queryForList(contains("FROM bookings b JOIN venues v"), eq(22L), eq(101L), eq(101L)))
+                .willReturn(List.of(Map.of("id", 22L, "player_id", 103L, "venue_id", 1L,
+                        "play_date", "2026-12-01", "start_time", "19:00:00", "end_time", "20:00:00",
+                        "status", "PENDING_OWNER")));
+        given(db.update(contains("UPDATE bookings SET status=?, owner_note=?, owner_id=?"),
+                eq("REJECTED"), eq("Sân bảo trì"), eq(101L), eq(22L))).willReturn(1);
+
+        mvc.perform(patch("/api/owner/bookings/22/decision").with(authentication(authAs(101, "OWNER")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"accept\":false,\"note\":\"Sân bảo trì\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.id").value(22))
+                .andExpect(jsonPath("$.status").value("REJECTED"));
+    }
+
+    @Test void decideBookingRejectsNonOwnerRolesAndAnonymous() throws Exception {
+        mvc.perform(patch("/api/owner/bookings/21/decision")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"accept\":true}"))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(patch("/api/owner/bookings/21/decision").with(authentication(authAs(103, "PLAYER")))
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"accept\":true}"))
+                .andExpect(status().isForbidden());
+        mvc.perform(patch("/api/owner/bookings/21/decision").with(authentication(authAs(1, "ADMIN")))
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"accept\":true}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test void decideBookingRejectsAlreadyConfirmedOrOverlappingSlot() throws Exception {
+        given(db.queryForList(contains("FROM bookings b JOIN venues v"), eq(23L), eq(101L), eq(101L)))
+                .willReturn(List.of(Map.of("id", 23L, "player_id", 103L, "venue_id", 1L,
+                        "play_date", "2026-12-01", "start_time", "18:00:00", "end_time", "19:00:00",
+                        "status", "CONFIRMED")));
+
+        mvc.perform(patch("/api/owner/bookings/23/decision").with(authentication(authAs(101, "OWNER")))
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"accept\":true}"))
+                .andExpect(status().isConflict());
+    }
 }

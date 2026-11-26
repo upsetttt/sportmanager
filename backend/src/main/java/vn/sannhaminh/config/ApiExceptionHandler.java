@@ -44,6 +44,11 @@ public class ApiExceptionHandler {
         return ResponseEntity.badRequest()
                 .body(Map.of("error", "BAD_REQUEST", "message", "Dữ liệu tham chiếu không hợp lệ hoặc vi phạm ràng buộc"));
     }
+    @ExceptionHandler(IllegalArgumentException.class)
+    ResponseEntity<Map<String, Object>> illegalArgument(IllegalArgumentException ex) {
+        return ResponseEntity.badRequest()
+                .body(Map.of("error", "BAD_REQUEST", "message", ex.getMessage() == null ? "Tham số không hợp lệ" : ex.getMessage()));
+    }
     @ExceptionHandler(ResponseStatusException.class)
     ResponseEntity<Map<String, Object>> status(ResponseStatusException ex) {
         return ResponseEntity.status(ex.getStatusCode()).body(Map.of("error", ex.getStatusCode().toString(), "message", ex.getReason() == null ? "Yêu cầu không hợp lệ" : ex.getReason()));

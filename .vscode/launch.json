@@ -5,8 +5,8 @@
             "type": "java",
             "name": "Sân Nhà Mình: Spring Boot",
             "request": "launch",
-            "mainClass": "vn.sannhaminh.booking.BookingApiApplication",
-            "projectName": "booking-api",
+            "mainClass": "vn.sannhaminh.SanNhaMinhApplication",
+            "projectName": "san-nha-minh-api",
             "cwd": "${workspaceFolder}",
             "preLaunchTask": "Backend: Build"
         }

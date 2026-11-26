@@ -160,10 +160,10 @@ public class ApiController {
     }
 
     @GetMapping("/venues")
-    public List<Map<String, Object>> venues(@RequestParam(required = false) String q,
-                                            @RequestParam(required = false) Long categoryId,
-                                            @RequestParam(required = false) String district,
-                                            @RequestParam(required = false) String sort) {
+    public List<Map<String, Object>> venues(@RequestParam(name = "q", required = false) String q,
+                                            @RequestParam(name = "categoryId", required = false) Long categoryId,
+                                            @RequestParam(name = "district", required = false) String district,
+                                            @RequestParam(name = "sort", required = false) String sort) {
         String sql = "SELECT v.*,a.full_name owner_name,c.name category_name FROM venues v JOIN accounts a ON a.id=v.owner_id LEFT JOIN categories c ON c.id=v.category_id WHERE v.status='ACTIVE' AND a.status='ACTIVE'";
         List<Object> args = new ArrayList<>();
         if (q != null && !q.isBlank()) {
@@ -186,12 +186,12 @@ public class ApiController {
     /** API phân trang riêng để không phá vỡ hợp đồng mảng JSON mà giao diện TX1 đang sử dụng. */
     @GetMapping("/venues/page")
     public Map<String, Object> venuesPage(
-            @RequestParam(required = false) String q,
-            @RequestParam(required = false) Long categoryId,
-            @RequestParam(required = false) String district,
-            @RequestParam(defaultValue = "created_desc") String sort,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "12") int size) {
+            @RequestParam(name = "q", required = false) String q,
+            @RequestParam(name = "categoryId", required = false) Long categoryId,
+            @RequestParam(name = "district", required = false) String district,
+            @RequestParam(name = "sort", defaultValue = "created_desc") String sort,
+            @RequestParam(name = "page", defaultValue = "0") int page,
+            @RequestParam(name = "size", defaultValue = "12") int size) {
         if (page < 0) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "page phải lớn hơn hoặc bằng 0");
         if (size < 1 || size > 50) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "size phải từ 1 đến 50");
         String from = " FROM venues v JOIN accounts a ON a.id=v.owner_id LEFT JOIN categories c ON c.id=v.category_id WHERE v.status='ACTIVE' AND a.status='ACTIVE'";
@@ -223,7 +223,7 @@ public class ApiController {
     }
 
     @GetMapping("/venues/{id}")
-    public Map<String, Object> venue(@PathVariable long id) {
+    public Map<String, Object> venue(@PathVariable("id") long id) {
         var rows = db.queryForList(
                 "SELECT v.*,a.full_name owner_name,a.phone owner_phone,c.name category_name FROM venues v JOIN accounts a ON a.id=v.owner_id LEFT JOIN categories c ON c.id=v.category_id WHERE v.id=? AND v.status='ACTIVE' AND a.status='ACTIVE'",
                 id);
@@ -253,10 +253,12 @@ public class ApiController {
     public Map<String, Object> ownerDashboard(@AuthenticationPrincipal AuthUser u) {
         return Map.of(
                 "venueCount", db.queryForObject("SELECT COUNT(*) FROM venues WHERE owner_id=? AND status<>'ARCHIVED'", Integer.class, uid(u)),
-                "pendingCount", db.queryForObject("SELECT COUNT(*) FROM bookings WHERE owner_id=? AND status='PENDING_OWNER'", Integer.class, uid(u)),
+                "pendingCount", db.queryForObject(
+                        "SELECT COUNT(*) FROM bookings b JOIN venues v ON v.id=b.venue_id WHERE (b.owner_id=? OR v.owner_id=?) AND b.status='PENDING_OWNER'",
+                        Integer.class, uid(u), uid(u)),
                 "monthRevenue", db.queryForObject(
-                        "SELECT COALESCE(SUM(p.amount),0) FROM payments p JOIN bookings b ON b.id=p.booking_id WHERE b.owner_id=? AND p.status='PAID' AND MONTH(p.created_at)=MONTH(CURDATE()) AND YEAR(p.created_at)=YEAR(CURDATE())",
-                        BigDecimal.class, uid(u)));
+                        "SELECT COALESCE(SUM(p.amount),0) FROM payments p JOIN bookings b ON b.id=p.booking_id JOIN venues v ON v.id=b.venue_id WHERE (b.owner_id=? OR v.owner_id=?) AND p.status='PAID' AND MONTH(p.created_at)=MONTH(CURDATE()) AND YEAR(p.created_at)=YEAR(CURDATE())",
+                        BigDecimal.class, uid(u), uid(u)));
     }
 
     @GetMapping("/owner/venues")
@@ -288,7 +290,7 @@ public class ApiController {
 
     @PutMapping("/owner/venues/{id}")
     @PreAuthorize("hasRole('OWNER')")
-    public Map<String, Object> updateVenue(@AuthenticationPrincipal AuthUser u, @PathVariable long id, @RequestBody Map<String, Object> b) {
+    public Map<String, Object> updateVenue(@AuthenticationPrincipal AuthUser u, @PathVariable("id") long id, @RequestBody Map<String, Object> b) {
         Map<String, Object> data = body(b);
         String name = requireText(data, "name", "Tên sân", 180);
         String address = requireText(data, "address", "Địa chỉ", 255);
@@ -307,7 +309,7 @@ public class ApiController {
 
     @DeleteMapping("/owner/venues/{id}")
     @PreAuthorize("hasRole('OWNER')")
-    public Map<String, Object> archiveVenue(@AuthenticationPrincipal AuthUser u, @PathVariable long id) {
+    public Map<String, Object> archiveVenue(@AuthenticationPrincipal AuthUser u, @PathVariable("id") long id) {
         int updated = db.update("UPDATE venues SET status='ARCHIVED' WHERE id=? AND owner_id=? AND status<>'ARCHIVED'", id, uid(u));
         if (updated == 0) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy sân hoặc sân đã được lưu trữ");
         audit(u, "VENUE_ARCHIVE", "VENUE", id, null);
@@ -318,57 +320,88 @@ public class ApiController {
     @PreAuthorize("hasRole('OWNER')")
     public List<Map<String, Object>> ownerRevenue(@AuthenticationPrincipal AuthUser u) {
         return db.queryForList(
-                "SELECT p.*,b.booking_code,v.name venue_name,a.full_name payer_name FROM payments p JOIN bookings b ON b.id=p.booking_id JOIN venues v ON v.id=b.venue_id JOIN accounts a ON a.id=p.payer_id WHERE b.owner_id=? AND p.status='PAID' ORDER BY p.created_at DESC",
-                uid(u));
+                "SELECT p.*,b.booking_code,v.name venue_name,a.full_name payer_name FROM payments p JOIN bookings b ON b.id=p.booking_id JOIN venues v ON v.id=b.venue_id JOIN accounts a ON a.id=p.payer_id WHERE (b.owner_id=? OR v.owner_id=?) AND p.status='PAID' ORDER BY p.created_at DESC",
+                uid(u), uid(u));
     }
 
     @GetMapping("/owner/bookings")
     @PreAuthorize("hasRole('OWNER')")
     public List<Map<String, Object>> ownerBookings(@AuthenticationPrincipal AuthUser u) {
         return db.queryForList(
-                "SELECT b.*,v.name venue_name,a.full_name player_name,a.phone player_phone,p.method payment_method,p.status payment_status FROM bookings b JOIN venues v ON v.id=b.venue_id JOIN accounts a ON a.id=b.player_id LEFT JOIN payments p ON p.booking_id=b.id WHERE b.owner_id=? ORDER BY b.play_date DESC,b.start_time DESC",
-                uid(u));
+                "SELECT b.*,v.name venue_name,a.full_name player_name,a.phone player_phone,p.method payment_method,p.status payment_status FROM bookings b JOIN venues v ON v.id=b.venue_id JOIN accounts a ON a.id=b.player_id LEFT JOIN payments p ON p.booking_id=b.id WHERE (b.owner_id=? OR v.owner_id=?) ORDER BY b.play_date DESC,b.start_time DESC",
+                uid(u), uid(u));
     }
 
     @PatchMapping("/owner/bookings/{id}/decision")
     @Transactional
     @PreAuthorize("hasRole('OWNER')")
-    public Map<String, Object> decideBooking(@AuthenticationPrincipal AuthUser u, @PathVariable long id, @RequestBody Map<String, Object> b) {
+    public Map<String, Object> decideBooking(@AuthenticationPrincipal AuthUser u, @PathVariable("id") long id,
+                                             @RequestBody(required = false) Map<String, Object> b) {
         Map<String, Object> data = body(b);
-        if (!data.containsKey("accept") || data.get("accept") == null) {
+        Object rawAccept = data.get("accept");
+        if (rawAccept == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Thiếu trường accept (true/false)");
         }
-        var rows = db.queryForList("SELECT id, player_id, status FROM bookings WHERE id=? AND owner_id=? FOR UPDATE", id, uid(u));
+        boolean accept;
+        if (rawAccept instanceof Boolean boolVal) {
+            accept = boolVal;
+        } else {
+            String acceptText = String.valueOf(rawAccept).trim().toLowerCase();
+            if ("true".equals(acceptText)) {
+                accept = true;
+            } else if ("false".equals(acceptText)) {
+                accept = false;
+            } else {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Giá trị accept phải là true hoặc false");
+            }
+        }
+        String note = s(data, "note", "").trim();
+        if (note.length() > 500) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Ghi chú chủ sân tối đa 500 ký tự");
+        }
+        var rows = db.queryForList(
+                "SELECT b.id, b.player_id, b.venue_id, b.play_date, b.start_time, b.end_time, b.status FROM bookings b JOIN venues v ON v.id=b.venue_id WHERE b.id=? AND (b.owner_id=? OR v.owner_id=?) FOR UPDATE",
+                id, uid(u), uid(u));
         if (rows.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy yêu cầu đặt sân");
         Map<String, Object> booking = rows.get(0);
-        if (!"PENDING_OWNER".equals(booking.get("status"))) {
+        String currentStatus = String.valueOf(booking.get("status")).trim().toUpperCase();
+        if (!"PENDING_OWNER".equals(currentStatus)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Yêu cầu không còn ở trạng thái chờ");
         }
-        boolean accept = Boolean.parseBoolean(s(data, "accept", "false"));
+        if (accept) {
+            Integer overlap = db.queryForObject(
+                    "SELECT COUNT(*) FROM bookings WHERE venue_id=? AND play_date=? AND id<>? AND status='CONFIRMED' AND start_time < ? AND end_time > ?",
+                    Integer.class, booking.get("venue_id"), booking.get("play_date"), id, booking.get("end_time"), booking.get("start_time"));
+            if (overlap != null && overlap > 0) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Khung giờ này đã có lịch đặt được xác nhận trước đó");
+            }
+        }
         String next = accept ? "CONFIRMED" : "REJECTED";
-        int updated = db.update("UPDATE bookings SET status=?,owner_note=? WHERE id=? AND owner_id=? AND status='PENDING_OWNER'",
-                next, s(data, "note", "").trim(), id, uid(u));
+        int updated = db.update("UPDATE bookings SET status=?, owner_note=?, owner_id=? WHERE id=? AND status='PENDING_OWNER'",
+                next, note, uid(u), id);
         if (updated == 0) throw new ResponseStatusException(HttpStatus.CONFLICT, "Yêu cầu không còn ở trạng thái chờ");
         notify(((Number) booking.get("player_id")).longValue(),
                 accept ? "Đặt sân được xác nhận" : "Đặt sân bị từ chối",
                 accept ? "Chủ sân đã xác nhận lịch đặt của bạn." : "Chủ sân không thể nhận lịch đặt này.");
-        audit(u, "BOOKING_" + next, "BOOKING", id, null);
-        return Map.of("success", true, "status", next);
+        audit(u, "BOOKING_" + next, "BOOKING", id, note.isEmpty() ? null : note);
+        return Map.of("success", true, "id", id, "status", next);
     }
 
     @PatchMapping("/owner/bookings/{id}/complete")
     @Transactional
     @PreAuthorize("hasRole('OWNER')")
-    public Map<String, Object> completeBooking(@AuthenticationPrincipal AuthUser u, @PathVariable long id) {
-        var rows = db.queryForList("SELECT id, player_id, status FROM bookings WHERE id=? AND owner_id=? FOR UPDATE", id, uid(u));
+    public Map<String, Object> completeBooking(@AuthenticationPrincipal AuthUser u, @PathVariable("id") long id) {
+        var rows = db.queryForList(
+                "SELECT b.id, b.player_id, b.status FROM bookings b JOIN venues v ON v.id=b.venue_id WHERE b.id=? AND (b.owner_id=? OR v.owner_id=?) FOR UPDATE",
+                id, uid(u), uid(u));
         if (rows.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy lịch đặt sân");
-        int updated = db.update("UPDATE bookings SET status='COMPLETED' WHERE id=? AND owner_id=? AND status='CONFIRMED'", id, uid(u));
+        int updated = db.update("UPDATE bookings SET status='COMPLETED', owner_id=? WHERE id=? AND status='CONFIRMED'", uid(u), id);
         if (updated == 0) throw new ResponseStatusException(HttpStatus.CONFLICT, "Không thể hoàn tất lịch này");
         notify(((Number) rows.get(0).get("player_id")).longValue(),
                 "Lịch đặt sân đã hoàn thành",
                 "Lịch đặt sân của bạn đã hoàn thành. Bạn có thể gửi đánh giá trải nghiệm ngay bây giờ.");
         audit(u, "BOOKING_COMPLETED", "BOOKING", id, null);
-        return Map.of("success", true);
+        return Map.of("success", true, "id", id, "status", "COMPLETED");
     }
 
     @PostMapping("/payments")
@@ -420,7 +453,7 @@ public class ApiController {
 
     @PostMapping("/favorites/{venueId}")
     @PreAuthorize("hasRole('PLAYER')")
-    public Map<String, Object> toggleFavorite(@AuthenticationPrincipal AuthUser u, @PathVariable long venueId) {
+    public Map<String, Object> toggleFavorite(@AuthenticationPrincipal AuthUser u, @PathVariable("venueId") long venueId) {
         Integer existing = db.queryForObject("SELECT COUNT(*) FROM favorites WHERE player_id=? AND venue_id=?", Integer.class, uid(u), venueId);
         if (existing != null && existing > 0) {
             db.update("DELETE FROM favorites WHERE player_id=? AND venue_id=?", uid(u), venueId);
@@ -493,14 +526,14 @@ public class ApiController {
     }
 
     @PatchMapping("/notifications/{id}/read")
-    public Map<String, Object> readNotification(@AuthenticationPrincipal AuthUser u, @PathVariable long id) {
+    public Map<String, Object> readNotification(@AuthenticationPrincipal AuthUser u, @PathVariable("id") long id) {
         db.update("UPDATE notifications SET is_read=1 WHERE id=? AND account_id=?", id, uid(u));
         return Map.of("success", true);
     }
 
     @GetMapping("/owner/venues/{id}/schedules")
     @PreAuthorize("hasRole('OWNER')")
-    public List<Map<String, Object>> ownerSchedules(@AuthenticationPrincipal AuthUser u, @PathVariable long id) {
+    public List<Map<String, Object>> ownerSchedules(@AuthenticationPrincipal AuthUser u, @PathVariable("id") long id) {
         Integer owns = db.queryForObject("SELECT COUNT(*) FROM venues WHERE id=? AND owner_id=?", Integer.class, id, uid(u));
         if (owns == null || owns == 0) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy sân");
         return db.queryForList("SELECT * FROM venue_schedules WHERE venue_id=? ORDER BY day_of_week", id);
@@ -509,7 +542,7 @@ public class ApiController {
     @PutMapping("/owner/venues/{id}/schedules")
     @Transactional
     @PreAuthorize("hasRole('OWNER')")
-    public Map<String, Object> saveSchedules(@AuthenticationPrincipal AuthUser u, @PathVariable long id,
+    public Map<String, Object> saveSchedules(@AuthenticationPrincipal AuthUser u, @PathVariable("id") long id,
                                              @RequestBody List<Map<String, Object>> schedules) {
         Integer owns = db.queryForObject("SELECT COUNT(*) FROM venues WHERE id=? AND owner_id=? AND status<>'ARCHIVED'", Integer.class, id, uid(u));
         if (owns == null || owns == 0) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy sân");
@@ -561,7 +594,7 @@ public class ApiController {
 
     @PatchMapping("/owner/reviews/{id}/reply")
     @PreAuthorize("hasRole('OWNER')")
-    public Map<String, Object> replyReview(@AuthenticationPrincipal AuthUser u, @PathVariable long id, @RequestBody Map<String, Object> b) {
+    public Map<String, Object> replyReview(@AuthenticationPrincipal AuthUser u, @PathVariable("id") long id, @RequestBody Map<String, Object> b) {
         int updated = db.update("UPDATE reviews r JOIN venues v ON v.id=r.venue_id SET r.owner_reply=? WHERE r.id=? AND v.owner_id=?",
                 s(body(b), "reply", "").trim(), id, uid(u));
         if (updated == 0) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy đánh giá");
@@ -603,8 +636,9 @@ public class ApiController {
     }
 
     @PutMapping("/admin/venues/{id}")
+    @Transactional
     @PreAuthorize("hasRole('ADMIN')")
-    public Map<String, Object> adminUpdateVenue(@AuthenticationPrincipal AuthUser u, @PathVariable long id, @RequestBody Map<String, Object> b) {
+    public Map<String, Object> adminUpdateVenue(@AuthenticationPrincipal AuthUser u, @PathVariable("id") long id, @RequestBody Map<String, Object> b) {
         Map<String, Object> data = body(b);
         long owner = requireValidVenueOwner(data);
         String name = requireText(data, "name", "Tên sân", 180);
@@ -618,6 +652,7 @@ public class ApiController {
                 owner, categoryId, name, s(data, "description", "").trim(), address, s(data, "district", "").trim(),
                 city, s(data, "imageUrl", "").trim(), price, id);
         if (updated == 0) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy sân");
+        db.update("UPDATE bookings SET owner_id=? WHERE venue_id=? AND owner_id<>?", owner, id, owner);
         audit(u, "ADMIN_VENUE_UPDATE", "VENUE", id, null);
         return Map.of("success", true);
     }
@@ -666,7 +701,7 @@ public class ApiController {
 
     @PutMapping("/admin/accounts/{id}")
     @PreAuthorize("hasRole('ADMIN')")
-    public Map<String, Object> adminUpdateAccount(@AuthenticationPrincipal AuthUser u, @PathVariable long id, @RequestBody Map<String, Object> b) {
+    public Map<String, Object> adminUpdateAccount(@AuthenticationPrincipal AuthUser u, @PathVariable("id") long id, @RequestBody Map<String, Object> b) {
         Map<String, Object> data = body(b);
         String fullName = requireText(data, "fullName", "Họ và tên", 120);
         String email = requireEmail(data);
@@ -688,7 +723,7 @@ public class ApiController {
 
     @PatchMapping("/admin/accounts/{id}/status")
     @PreAuthorize("hasRole('ADMIN')")
-    public Map<String, Object> accountStatus(@AuthenticationPrincipal AuthUser u, @PathVariable long id, @RequestBody Map<String, Object> b) {
+    public Map<String, Object> accountStatus(@AuthenticationPrincipal AuthUser u, @PathVariable("id") long id, @RequestBody Map<String, Object> b) {
         String status = s(body(b), "status", "ACTIVE").trim().toUpperCase();
         if (!VALID_ACCOUNT_STATUSES.contains(status)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Trạng thái tài khoản không hợp lệ");
@@ -708,7 +743,7 @@ public class ApiController {
 
     @PatchMapping("/admin/accounts/{id}/password")
     @PreAuthorize("hasRole('ADMIN')")
-    public Map<String, Object> resetAccountPassword(@AuthenticationPrincipal AuthUser u, @PathVariable long id, @RequestBody Map<String, Object> b) {
+    public Map<String, Object> resetAccountPassword(@AuthenticationPrincipal AuthUser u, @PathVariable("id") long id, @RequestBody Map<String, Object> b) {
         String password = s(body(b), "password", "");
         if (password.length() < 8 || password.length() > 72) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Mật khẩu phải từ 8 đến 72 ký tự");
@@ -728,7 +763,7 @@ public class ApiController {
     @PatchMapping("/admin/venues/{id}/status")
     @Transactional
     @PreAuthorize("hasRole('ADMIN')")
-    public Map<String, Object> venueStatus(@AuthenticationPrincipal AuthUser u, @PathVariable long id, @RequestBody Map<String, Object> b) {
+    public Map<String, Object> venueStatus(@AuthenticationPrincipal AuthUser u, @PathVariable("id") long id, @RequestBody Map<String, Object> b) {
         String status = s(body(b), "status", "ACTIVE").trim().toUpperCase();
         if (!VALID_VENUE_STATUSES.contains(status)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Trạng thái sân không hợp lệ");
@@ -756,7 +791,7 @@ public class ApiController {
     @PatchMapping("/admin/bookings/{id}/cancel")
     @Transactional
     @PreAuthorize("hasRole('ADMIN')")
-    public Map<String, Object> adminCancelBooking(@AuthenticationPrincipal AuthUser u, @PathVariable long id) {
+    public Map<String, Object> adminCancelBooking(@AuthenticationPrincipal AuthUser u, @PathVariable("id") long id) {
         var rows = db.queryForList("SELECT id, player_id, owner_id, booking_code, status FROM bookings WHERE id=? FOR UPDATE", id);
         if (rows.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy lịch đặt sân");
         int updated = db.update("UPDATE bookings SET status='CANCELLED' WHERE id=? AND status IN ('PENDING_OWNER','CONFIRMED')", id);
@@ -781,7 +816,7 @@ public class ApiController {
     @PatchMapping("/admin/payments/{id}/confirm")
     @Transactional
     @PreAuthorize("hasRole('ADMIN')")
-    public Map<String, Object> confirmPayment(@AuthenticationPrincipal AuthUser u, @PathVariable long id,
+    public Map<String, Object> confirmPayment(@AuthenticationPrincipal AuthUser u, @PathVariable("id") long id,
                                               @RequestBody(required = false) Map<String, Object> b) {
         var rows = db.queryForList(
                 "SELECT p.payer_id, p.booking_id, p.status payment_status, b.status booking_status FROM payments p JOIN bookings b ON b.id=p.booking_id WHERE p.id=? FOR UPDATE",
@@ -803,7 +838,7 @@ public class ApiController {
     @PatchMapping("/admin/payments/{id}/refund")
     @Transactional
     @PreAuthorize("hasRole('ADMIN')")
-    public Map<String, Object> refundPayment(@AuthenticationPrincipal AuthUser u, @PathVariable long id,
+    public Map<String, Object> refundPayment(@AuthenticationPrincipal AuthUser u, @PathVariable("id") long id,
                                              @RequestBody(required = false) Map<String, Object> b) {
         var rows = db.queryForList("SELECT payer_id FROM payments WHERE id=? FOR UPDATE", id);
         if (rows.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy giao dịch thanh toán");
@@ -824,7 +859,7 @@ public class ApiController {
     @PatchMapping("/admin/reviews/{id}/visibility")
     @Transactional
     @PreAuthorize("hasRole('ADMIN')")
-    public Map<String, Object> reviewVisibility(@AuthenticationPrincipal AuthUser u, @PathVariable long id, @RequestBody Map<String, Object> b) {
+    public Map<String, Object> reviewVisibility(@AuthenticationPrincipal AuthUser u, @PathVariable("id") long id, @RequestBody Map<String, Object> b) {
         var rows = db.queryForList("SELECT venue_id FROM reviews WHERE id=?", id);
         if (rows.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy đánh giá");
         Object venueId = rows.get(0).get("venue_id");
@@ -858,7 +893,7 @@ public class ApiController {
 
     @GetMapping("/admin/revenue")
     @PreAuthorize("hasRole('ADMIN')")
-    public List<Map<String, Object>> revenue(@RequestParam(defaultValue = "month") String period) {
+    public List<Map<String, Object>> revenue(@RequestParam(name = "period", defaultValue = "month") String period) {
         String group = switch (period) {
             case "day" -> "DATE(p.created_at)";
             case "year" -> "YEAR(p.created_at)";
@@ -896,7 +931,7 @@ public class ApiController {
 
     @PutMapping("/admin/categories/{id}")
     @PreAuthorize("hasRole('ADMIN')")
-    public Map<String, Object> updateCategory(@AuthenticationPrincipal AuthUser u, @PathVariable long id, @RequestBody Map<String, Object> b) {
+    public Map<String, Object> updateCategory(@AuthenticationPrincipal AuthUser u, @PathVariable("id") long id, @RequestBody Map<String, Object> b) {
         Map<String, Object> data = body(b);
         String name = requireText(data, "name", "Tên danh mục", 100);
         Integer duplicate = db.queryForObject("SELECT COUNT(*) FROM categories WHERE name=? AND id<>?", Integer.class, name, id);
@@ -911,7 +946,7 @@ public class ApiController {
 
     @DeleteMapping("/admin/categories/{id}")
     @PreAuthorize("hasRole('ADMIN')")
-    public Map<String, Object> deleteCategory(@AuthenticationPrincipal AuthUser u, @PathVariable long id) {
+    public Map<String, Object> deleteCategory(@AuthenticationPrincipal AuthUser u, @PathVariable("id") long id) {
         int updated = db.update("UPDATE categories SET active=0 WHERE id=?", id);
         if (updated == 0) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy danh mục");
         audit(u, "CATEGORY_DEACTIVATE", "CATEGORY", id, null);

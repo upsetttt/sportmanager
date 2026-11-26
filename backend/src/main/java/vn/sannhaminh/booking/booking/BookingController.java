@@ -36,7 +36,7 @@ public class BookingController {
     }
 
     @PatchMapping("/{id}/cancel")
-    public Map<String, Object> cancelBooking(@PathVariable long id, @AuthenticationPrincipal AuthUser user) {
+    public Map<String, Object> cancelBooking(@PathVariable("id") long id, @AuthenticationPrincipal AuthUser user) {
         bookingService.cancelBooking(id, user);
         return Map.of("success", true);
     }
