@@ -133,16 +133,23 @@ Vite đã cấu hình proxy `/api` tới `http://localhost:8080`, vì vậy khô
 
 - Mật khẩu được băm bằng BCrypt.
 - API bảo vệ bằng JWT Bearer Token và phân quyền PLAYER/OWNER/ADMIN.
+<<<<<<< HEAD
 - Connection Pooling dùng HikariCP (cấu hình pool trong `backend/src/main/resources/application.yml`).
 - API `GET /api/venues/page?page=0&size=12&q=...&categoryId=...&district=...&sort=price_asc` hỗ trợ tìm kiếm, lọc và phân trang; endpoint `/api/venues` cũ vẫn trả mảng để tương thích giao diện hiện tại.
 - Lỗi validation và request sai định dạng được chuẩn hóa tại `ApiExceptionHandler`.
+=======
+>>>>>>> 52f75fe7e53e845a7a69ee99bc0c0647ef9481d1
 - Tài khoản bị khóa/vô hiệu hóa không đăng nhập được.
 - Các thao tác quan trọng của Admin được ghi vào `audit_logs`.
 - Trước khi triển khai internet: thay JWT secret, mật khẩu Admin, cấu hình HTTPS, CORS domain thật, giới hạn request, backup MySQL và bổ sung xác minh email/khôi phục mật khẩu.
 
 ## 9. Kiểm thử
 
+<<<<<<< HEAD
 Xem `docs/TEST_CHECKLIST.md` để kiểm tra lần lượt đăng ký, đăng nhập, quyền truy cập, đặt sân, xử lý booking, thanh toán, hoàn tiền và thao tác Admin. Backend có 8 bài kiểm thử HTTP/API cho health, danh mục, tìm kiếm/lọc, phân trang, dữ liệu đầu vào và phân quyền Admin. Chạy bằng `cd backend` rồi `./mvnw test` (Windows: `mvnw.cmd test`).
+=======
+Xem `docs/TEST_CHECKLIST.md` để kiểm tra lần lượt đăng ký, đăng nhập, quyền truy cập, đặt sân, xử lý booking, thanh toán, hoàn tiền và thao tác Admin.
+>>>>>>> 52f75fe7e53e845a7a69ee99bc0c0647ef9481d1
 
 > Trạng thái bản bàn giao: mã nguồn và cấu trúc dự án đã được tạo. Trong môi trường đóng gói hiện tại không có Maven executable và npm install bị timeout khi tải dependency, do đó chưa thể xác nhận Maven test hoặc Vite production build. Cần cài dependency trên máy phát triển và chạy checklist trước khi dùng thật.
 

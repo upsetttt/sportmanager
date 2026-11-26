@@ -21,6 +21,7 @@ public class AuthController {
                                   String phone, @NotBlank @Size(min=8,max=72) String password, String role) {}
     public record LoginRequest(@Email @NotBlank String email, @NotBlank String password) {}
     @PostMapping("/register") public Map<String,Object> register(@Valid @RequestBody RegisterRequest r) {
+<<<<<<< HEAD
         String email = r.email().trim().toLowerCase();
         String fullName = r.fullName().trim();
         String phone = r.phone() == null ? null : r.phone().trim();
@@ -33,6 +34,16 @@ public class AuthController {
     @PostMapping("/login") public Map<String,Object> login(@Valid @RequestBody LoginRequest r) {
         String email = r.email().trim().toLowerCase();
         var rows=db.query("SELECT id,full_name,email,password_hash,role,status FROM accounts WHERE email=?",(rs,n)->new Object[]{rs.getLong("id"),rs.getString("full_name"),rs.getString("email"),rs.getString("password_hash"),rs.getString("role"),rs.getString("status")},email);
+=======
+        Integer count=db.queryForObject("SELECT COUNT(*) FROM accounts WHERE email=?",Integer.class,r.email().toLowerCase());
+        if(count!=null && count>0) throw new ResponseStatusException(HttpStatus.CONFLICT,"Email đã được sử dụng");
+        String role="OWNER".equalsIgnoreCase(r.role())?"OWNER":"PLAYER";
+        db.update("INSERT INTO accounts(full_name,email,phone,password_hash,role) VALUES(?,?,?,?,?)",r.fullName(),r.email().toLowerCase(),r.phone(),encoder.encode(r.password()),role);
+        return login(new LoginRequest(r.email(),r.password()));
+    }
+    @PostMapping("/login") public Map<String,Object> login(@Valid @RequestBody LoginRequest r) {
+        var rows=db.query("SELECT id,full_name,email,password_hash,role,status FROM accounts WHERE email=?",(rs,n)->new Object[]{rs.getLong("id"),rs.getString("full_name"),rs.getString("email"),rs.getString("password_hash"),rs.getString("role"),rs.getString("status")},r.email().toLowerCase());
+>>>>>>> 52f75fe7e53e845a7a69ee99bc0c0647ef9481d1
         if(rows.isEmpty()) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Email hoặc mật khẩu không chính xác");
         Object[] a=rows.get(0); if(!encoder.matches(r.password(),(String)a[3])) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Email hoặc mật khẩu không chính xác");
         if(!"ACTIVE".equals(a[5])) throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Tài khoản đang bị khóa hoặc vô hiệu hóa");
